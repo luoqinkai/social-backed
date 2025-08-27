@@ -5,7 +5,7 @@ const express = require('express');
 const mysql = require('mysql2/promise');
 const bcrypt = require('bcrypt');
 const jwt = require('jsonwebtoken');
-
+require('dotenv').config();
 // =================================================================
 // 阶段二：应用初始化与全局配置
 // =================================================================
@@ -17,17 +17,18 @@ app.use(express.json());
 
 // 数据库连接池配置
 const dbConfig = {
-    host: 'localhost',
-    user: 'root',
-    password: '', // 您的MySQL root用户密码
-    database: 'social_app',
+    host: process.env.DB_HOST,
+    user: process.env.DB_USER,
+    password: process.env.DB_PASSWORD,
+    database: process.env.DB_NAME,
     connectionLimit: 10
 };
 // 创建数据库连接池，用于高效处理并发请求
 const pool = mysql.createPool(dbConfig);
 
 // 定义JWT加密密钥。在真实项目中，这必须是一个更复杂且保密的字符串
-const JWT_SECRET = 'a-very-long-and-secret-string-that-no-one-can-guess';
+const JWT_SECRET = process.env.JWT_SECRET;
+const PORT =process.env.PORT||3000;
 
 // =================================================================
 // 阶段三：可复用的认证中间件
@@ -39,29 +40,21 @@ const JWT_SECRET = 'a-very-long-and-secret-string-that-no-one-can-guess';
  * @param {function} next - 下一个中间件函数
  */
 const authenticateToken = (req, res, next) => {
-    // 从请求头中提取Authorization字段
-    const authHeader = req.headers.authorization;
-    // 检查字段是否存在并且格式是否正确 (以 "Bearer " 开头)
-    const token = authHeader && authHeader.split(' ')[1];
-
-    // 如果令牌不存在，直接返回401 Unauthorized
-    if (token == null) {
-        return res.sendStatus(401);
-    }
-
-    // 验证令牌的有效性
-    jwt.verify(token, JWT_SECRET, (err, user) => {
-        // 如果验证失败（例如，令牌无效或过期），返回403 Forbidden
-        if (err) {
-            return res.sendStatus(403);
+    try{
+        const authHeader = req.headers.authorization;
+        const token = authHeader && authHeader.split(" ")[1];
+        if (token==null){
+            return res.status(401).json({message:"错误：缺少认证令牌"});
         }
-
-        // 验证成功，将解码后的用户信息附加到请求对象上
-        req.user = user;
-        
-        // 继续处理下一个中间件或路由
+        const user=jwt.verify(token,JWT_SECRET);
+        req.user=user;
         next();
-    });
+    }
+    catch(err){
+        next(err);
+    }
+    
+ 
 };
 
 // =================================================================
@@ -206,7 +199,7 @@ app.post('/users/:id/follow', authenticateToken, async (req, res) => {
 // =================================================================
 // 阶段五：启动服务
 // =================================================================
-const PORT = 3000;
+
 app.listen(PORT, () => {
     console.log(`🚀 服务正在 http://localhost:${PORT} 运行`);
     // 检查数据库连接池是否正常
@@ -218,3 +211,18 @@ app.listen(PORT, () => {
             console.error('❌ 数据库连接池初始化失败:', err);
         });
 });
+// =================================================================
+// 阶段六：统一错误处理
+// =================================================================
+app.use(
+    (err,req,res,next)=>{
+        console.error("统一错误处理器捕获到错误：",err);
+        if(err.name==="JsonWebTokenError"){
+            return res.status(403).json({message:"错误：无效的令牌 "})；
+        }
+        if(err.name==="TokenExpiredError"){
+            return res.status(403).json({message:"错误：令牌已过期"});
+        }
+        res.status(500).json({message:"服务器内部发生未知错误"});
+    }
+)
