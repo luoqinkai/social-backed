@@ -29,4 +29,8 @@ router.get('/profile', authenticateToken, userController.getProfile);
 // POST /api/users/:id/follow -> 关注其他用户 (需要认证)
 router.post('/users/:id/follow', authenticateToken, userController.followUser);
 
+// GET /api/users/:id -> 获取指定ID用户的公开资料
+// 注意：这个接口不需要 authenticateToken 中间件，因为我们希望任何人都能查看
+router.get('/users/:id',userController.getUserById);
+router.delete('/users/:id/follow',authenticateToken,userController.unfollowUser);
 module.exports = router;
